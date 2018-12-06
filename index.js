@@ -1,75 +1,91 @@
 const dns = require('native-dns');
-const fs  = require("fs");
+const fs = require('fs');
 
 var last = 0;
 var failures = 0;
-var servers = JSON.parse( fs.readFileSync('servers.json') );
+var servers = JSON.parse(fs.readFileSync('servers.json'));
 
 function dateStamp() {
-    var event = new Date();
-    return event.toISOString().slice(0, 10).trim() + ' ' + event.toTimeString().slice(0, 8).trim();;
+	var event = new Date();
+	return (
+		event
+			.toISOString()
+			.slice(0, 10)
+			.trim() +
+	    ' ' +
+		event
+			.toTimeString()
+			.slice(0, 8)
+			.trim()
+	);
 }
 
 function queryDNS(server) {
-    return new Promise(function(resolve) {
-        let response={
-            error: false
-        };
+	return new Promise(function(resolve) {
+		let response = {
+			error: false
+		};
 
-        let question = dns.Question({
-            name: 'www.google.com',
-            type: 'A',
-            cache: false
-          });
-          
-          let start = new Date().getTime();
-          
-          var req = dns.Request({
-            question: question,
-            server: { address: server, port: 53, type: 'udp' },
-            timeout: 5000,
-          });
-          
-          req.on('timeout', function () {
-            response.error = true;
-          });
-          
-          req.on('message', function (err, answer) {
-            answer.answer.forEach(function (a) {
-              response.resolve = a.address;
-            });
-          });
-          
-          req.on('end', function () {
-            var delta = (new Date().getTime()) - start;
-            response.ms=delta;
-            resolve(response);
-          });
-          
-          req.send();
-    })
+		let question = dns.Question({
+			name: 'www.google.com',
+			type: 'A',
+			cache: false
+		});
+
+		let start = new Date().getTime();
+
+		var req = dns.Request({
+			question: question,
+			server: { address: server, port: 53, type: 'udp' },
+			timeout: 5000
+		});
+
+		req.on('timeout', function() {
+			response.error = true;
+		});
+
+		req.on('message', function(err, answer) {
+			answer.answer.forEach(function(a) {
+				response.resolve = a.address;
+			});
+		});
+
+		req.on('end', function() {
+			var delta = new Date().getTime() - start;
+			response.ms = delta;
+			resolve(response);
+		});
+
+		req.send();
+	});
+}
+
+function random(arr) {
+	let len = arr.length;
+	let rnd = Math.floor(Math.random() * len);
+	return arr[rnd];
 }
 
 async function isUp() {
-    let keys = Object.keys(servers);
-    if (++last > keys.length-1) last = 0;
+	let keys = Object.keys(servers);
+	if (++last > keys.length - 1) last = 0;
 
-    let server   = keys[last];
-    let serverIp = servers[keys[last]][0];
-    let response = await queryDNS(serverIp);
-    var msg;    
+	let server = keys[last];
+	let serverIp = random(servers[keys[last]]);
+	let response = await queryDNS(serverIp);
+	var msg = `${dateStamp()}: ${server} (${serverIp}) says you are `;
 
-    if (response.error) {
-        failures++;
-        msg = `${dateStamp()}: ${server} (${serverIp}) says you are ${!response.error==true?'ONLINE':'OFFLINE'} (failure ${failures}, Offline for ${Math.floor(failures*10/60)}m)`;
-        fs.appendFileSync("offline.txt", msg + "\n");
-    } else {
-        failures = 0;
-        msg = `${dateStamp()}: ${server} (${serverIp}) says you are ${!response.error==true?'ONLINE':'OFFLINE'} (${response.ms}ms)`;
-    }
+	if (response.error) {
+		failures++;
+        msg += `OFFLINE (failure ${failures}, Offline for ${Math.floor((failures * 10) / 60)}m)`;
+		fs.appendFileSync('offline.txt', msg + '\n');
+	} else {
+		failures = 0;
+		msg += `ONLINE (${response.ms}ms)`;
+	}
 
-    console.log(msg);
-    setTimeout(isUp, 10000);
+	console.log(msg);
+	setTimeout(isUp, 10000);
 }
 
 console.log();
