@@ -9,6 +9,7 @@
   "author": "FrostyCrits",
   "license": "GPL",
   "dependencies": {
+    "ansi": "^0.3.1",
     "native-dns": "^0.7.0"
   }
 }

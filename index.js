@@ -1,9 +1,12 @@
+const ansi = require('ansi')
+const cursor = ansi(process.stdout)
 const dns = require('native-dns');
 const fs = require('fs');
 
-var last = 0;
 var failures = 0;
-var servers = JSON.parse(fs.readFileSync('servers.json'));
+var warnings = 0;
+var lastHost = -1;
+var servers  = JSON.parse(fs.readFileSync('servers.json'));
 
 function dateStamp() {
 	var event = new Date();
@@ -68,29 +71,74 @@ function random(arr) {
 
 async function isUp() {
 	let keys = Object.keys(servers);
-	if (++last > keys.length - 1) last = 0;
+	if (++lastHost > keys.length - 1) lastHost = 0;
 
-	let server = keys[last];
-	let serverIp = random(servers[keys[last]]);
-	let response = await queryDNS(serverIp);
-	var msg = `${dateStamp()}: ${server} (${serverIp}) says you are `;
+	let server   = keys[lastHost];
+	let serverIp = random(servers[keys[lastHost]]);
+    let response = await queryDNS(serverIp);
 
-	if (response.error) {
-		failures++;
-        msg += `OFFLINE (failure ${failures}, Offline for ${Math.floor((failures * 10) / 60)}m)`;
-		fs.appendFileSync('offline.txt', msg + '\n');
-	} else {
-		failures = 0;
-		msg += `ONLINE (${response.ms}ms)`;
-	}
+    let ms      = response.ms + 'ms';
+    let status  = 'ONLINE';
+    let offTime = '0m';
 
-	console.log(msg);
-	setTimeout(isUp, 10000);
+    if (response.error) {
+        failures+=1;
+
+        status = 'OFFLINE';
+        offTime = `${ Math.floor((failures * 10) / 60) }m`;
+    
+        csv = `${dateStamp()}, ${server}, ${serverIp}, ${status}, ${failures}, ${offTime}`;
+    } else {
+        failures = 0;
+
+        if (response.ms > 1000) {
+            warnings += 1;
+            status = 'SLOW';
+        } else {
+            warnings = 0;
+        }
+
+        csv = `${dateStamp()}, ${server}, ${serverIp}, ${status}, ${warnings}, ${ms}`;
+    }
+
+    fs.appendFileSync('offline.csv', csv + `\n`);
+
+    cursor
+        .brightBlack()
+        .write('[')
+        .brightYellow()
+        .write(dateStamp())
+        .brightBlack()
+        .write(']: ')
+        .brightCyan()
+        .write(`${server}`)
+        .brightBlack()
+        .write('/')
+        .brightCyan()
+        .write(`${serverIp}`)
+        .brightWhite()
+        .write(' says you are ')
+
+        if (status == 'ONLINE') cursor.brightGreen().write(`Online (${ms})`);
+        if (status == 'OFFLINE') cursor.brightRed().write(`Offline (Failures: ${failures}, Offline: ${offTime})`);
+        if (status == 'SLOW') cursor.brightMagenta().write(`Slow (Warnings: ${warnings}, Milliseconds: ${ms})`);
+
+        cursor
+            .write('\n')
+            .fg.reset();
+
+    setTimeout(isUp, 10000);
 }
 
+cursor.brightBlack();
 console.log();
-console.log('Am I ONLINE?, v1 - [Logging to: offline.txt]');
+console.log('-------------------------------------------------------------------------------------------------------');
+cursor.brightWhite();
 console.log('This queries DNS servers to determine if you are online.  One positive could mean the server is offline');
 console.log('and may not mean that you are offline.  To be sure, multiple failures are the best indicator');
+cursor.brightBlack();
+console.log('-------------------------------------------------------------------------------------------------------');
 console.log();
+
 isUp();
+
