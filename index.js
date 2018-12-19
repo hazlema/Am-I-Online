@@ -8,6 +8,20 @@ var warnings = 0;
 var lastHost = -1;
 var servers = JSON.parse(fs.readFileSync('servers.json'));
 
+function logFile() {
+	var event = new Date();
+	var name =
+		event
+			.toISOString()
+			.slice(0, 10)
+			.trim()
+			.replace(/-/g, '') + '-online.csv';
+
+	if (!fs.existsSync(name)) fs.appendFileSync(name, 'Date/Time, Server, IP, Status, Errors, ms/min\n');
+
+	return name;
+}
+
 function dateStamp() {
 	var event = new Date();
 	return (
@@ -69,6 +83,56 @@ function random(arr) {
 	return arr[rnd];
 }
 
+function colorize(display) {
+	let charIndex = 0;
+	while (charIndex <= display.length - 1) {
+		let char = display[charIndex];
+
+		if (char == '^') {
+			let nextChar = display[charIndex + 1];
+
+			switch (nextChar) {
+				case 'b':
+					cursor.brightBlack();
+					charIndex++;
+					break;
+				case 'c':
+					cursor.brightCyan();
+					charIndex++;
+					break;
+				case 'w':
+					cursor.brightWhite();
+					charIndex++;
+					break;
+				case 'g':
+					cursor.brightGreen();
+					charIndex++;
+					break;
+				case 'r':
+					cursor.brightRed();
+					charIndex++;
+					break;
+				case 'm':
+					cursor.brightMagenta();
+					charIndex++;
+					break;
+				case 'y':
+					cursor.brightYellow();
+					charIndex++;
+					break;
+				default:
+					cursor.write(char);
+			}
+		} else {
+			cursor.write(char);
+		}
+
+		charIndex++;
+	}
+
+	cursor.write('\n').fg.reset();
+}
+
 async function isUp() {
 	let keys = Object.keys(servers);
 	if (++lastHost > keys.length - 1) lastHost = 0;
@@ -93,49 +157,36 @@ async function isUp() {
 
 		if (response.ms > 1000) {
 			warnings += 1;
-			status = 'SLOW';
+			if (response.ms > 2000) {
+				status = 'VERY SLOW';
+			} else {
+				status = 'SLOW';
+			}
 		} else {
 			warnings = 0;
 		}
 
-		csv = `${dateStamp()}, ${server}, ${serverIp}, ${status}, ${warnings}, ${ms}`;
+		csv = `${dateStamp()}, ${server}, ${serverIp}, ${status}, ${warnings}, ${ms}ms`;
 	}
 
-	fs.appendFileSync('offline.csv', csv + `\n`);
+	var output = `^b[^w${dateStamp()}^b]: ^c${server}^b/^c${serverIp}^w says you are `;
+	if (status == 'ONLINE') output += `^gOnline ^b(^w${ms}^b)`;
+	if (status == 'OFFLINE') output += `^rOffline ^b(^rFailures^b:^w ${failures}^b,^r Offline for^b:^w ${offTime}^b)`;
+	if (status == 'VERY SLOW') output += `^mVery Slow ^b(^mWarnings^b:^w ${warnings}^b,^m Milliseconds^b:^w ${ms}^b)`;
+	if (status == 'SLOW') output += `^ySlow ^b(^yWarnings^b:^w ${warnings}^b,^y Milliseconds^b:^w ${ms}^b)`;
 
-	cursor
-		.brightBlack()
-		.write('[')
-		.brightYellow()
-		.write(dateStamp())
-		.brightBlack()
-		.write(']: ')
-		.brightCyan()
-		.write(`${server}`)
-		.brightBlack()
-		.write('/')
-		.brightCyan()
-		.write(`${serverIp}`)
-		.brightWhite()
-		.write(' says you are ');
-
-	if (status == 'ONLINE') cursor.brightGreen().write(`Online (${ms})`);
-	if (status == 'OFFLINE') cursor.brightRed().write(`Offline (Failures: ${failures}, Offline: ${offTime})`);
-	if (status == 'SLOW') cursor.brightMagenta().write(`Slow (Warnings: ${warnings}, Milliseconds: ${ms})`);
-
-	cursor.write('\n').fg.reset();
+	colorize(output);
+	fs.appendFileSync(logFile(), csv + `\n`);
 
 	setTimeout(isUp, 10000);
 }
 
 cursor.brightBlack();
+colorize('^b-[ ^wAm ^gI ^wONLINE? ^b]--------------------------------------------------------------------------------------');
 console.log();
-console.log('-------------------------------------------------------------------------------------------------------');
-cursor.brightWhite();
-console.log('This queries DNS servers to determine if you are online.  One positive could mean the server is offline');
-console.log('and may not mean that you are offline.  To be sure, multiple failures are the best indicator');
-cursor.brightBlack();
-console.log('-------------------------------------------------------------------------------------------------------');
+colorize('^wThis utility queries multiple ^mDNS servers^w to determine if you are online.  ^wOne positive could mean the');
+colorize('^rserver is offline or slow ^wand may not mean that ^ryou are offline or slow.');
 console.log();
-
+colorize('^w** ^yTo be sure, multiple failures are the best indicator ^w**');
+console.log();
 isUp();
